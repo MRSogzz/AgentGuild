@@ -34,9 +34,17 @@ def safe_path(raw: str) -> Path:
 
 MAX_FILE_SIZE = 500_000
 MAX_FILES_IN_WORKSPACE = 500
+
+# ★ 新增前端擴展名
 ALLOWED_EXT = {
+    # 後端
     ".py", ".txt", ".md", ".json", ".yaml", ".yml",
     ".csv", ".log", ".ini", ".toml",
+    # 前端
+    ".html", ".htm", ".css", ".scss", ".sass", ".less",
+    ".js", ".mjs", ".cjs", ".jsx",
+    ".ts", ".tsx", ".vue", ".svelte",
+    ".svg", ".xml",
 }
 
 
@@ -45,7 +53,7 @@ def check_write_target(p: Path):
         return
     ext = p.suffix.lower()
     if ext not in ALLOWED_EXT:
-        raise GuardrailError(f"不允許的檔案型別: {ext or '(無字尾)'}")
+        raise GuardrailError(f"不允許的檔案類型: {ext or '(無後綴)'}")
     count = sum(1 for _ in WORKSPACE_DIR.rglob("*") if _.is_file())
     if count >= MAX_FILES_IN_WORKSPACE:
         raise GuardrailError(f"工作區檔案數已達上限（{MAX_FILES_IN_WORKSPACE}）")
@@ -57,14 +65,11 @@ def check_file_content_size(content: str):
         raise GuardrailError(f"內容過大: {size} 位元組 > {MAX_FILE_SIZE}")
 
 
-# ---------- AST 沙箱 ----------
 FORBIDDEN_IMPORTS = {
     "os", "sys", "subprocess", "shutil", "socket",
     "urllib", "requests", "pathlib", "ctypes",
     "multiprocessing", "threading", "pickle", "marshal",
     "importlib", "pkgutil", "platform", "pty", "tty",
-    # 注意：pytest 不在黑名單裡。Dev 不應該 import pytest 到 run_python，
-    # 但如果真的寫了，讓它自己去踩 ModuleNotFoundError，比被護欄攔截更有教育意義。
 }
 
 FORBIDDEN_BUILTINS = {
@@ -98,17 +103,14 @@ def check_python_ast(code: str) -> str:
                 root = name.name.split(".")[0]
                 if root in FORBIDDEN_IMPORTS:
                     raise GuardrailError(f"禁止 import {root}")
-
         if isinstance(node, ast.ImportFrom):
             if node.module:
                 root = node.module.split(".")[0]
                 if root in FORBIDDEN_IMPORTS:
                     raise GuardrailError(f"禁止 from {root} import")
-
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name) and node.func.id in FORBIDDEN_BUILTINS:
-                raise GuardrailError(f"禁止呼叫 {node.func.id}()")
-
+                raise GuardrailError(f"禁止調用 {node.func.id}()")
         if isinstance(node, ast.Attribute):
             if node.attr.startswith("__") and node.attr.endswith("__"):
                 raise GuardrailError(f"禁止訪問 dunder 屬性 {node.attr}")

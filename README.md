@@ -484,7 +484,16 @@ pip install pytest
 
 **若仍發生**：檢查 Python 版本是否 ≥ 3.7。
 
-### Q8：模型一直在 `run_python` 裡塞 `import pytest`
+### Q8：所有 Agent 顯示 0 tok/s，模型輸出斜線或亂碼
+
+**原因**：這通常是模型/runtime 產生了損壞 token，而不是 QA 或程式碼落盤流程。此工作台不再對生成請求設定會吞掉斜線的 stop 字串；若偵測到空回覆或重複字元，會立即中止本輪並顯示錯誤，不會再讓空 QA 結果觸發改進循環。
+
+**排查**：
+1. 開啟 `/api/health`，查看 `model_ftype`、`build_info` 與 `generation_warning`。
+2. 對目前模型直接送出「Reply with exactly: OK」；若回傳重複 `/`，先檢查 GGUF 的 SHA-256 是否符合模型發布頁，再確認 runtime 支援該量化格式與所需運算路徑。
+3. 若 `model_ftype` 是 `PTQ1_0`，請使用明確支援 PTQ1_0/Hadamard 權重的 runtime；一般模型名稱或 HTTP 200 不代表推論結果有效。
+
+### Q9：模型一直在 `run_python` 裡塞 `import pytest`
 
 **原因**：工程師誤以為 `run_python` 環境有 pytest。
 
@@ -492,7 +501,7 @@ pip install pytest
 - `DEV_PROMPT` 明確寫「不要呼叫 run_python 執行含 import pytest 的程式碼」
 - `run_python` 環境確實沒有 pytest，模型會看到真實錯誤並學習
 
-### Q9：模型輸出 `<|tool_call>call:xxx` 而非系統格式
+### Q10：模型輸出 `<|tool_call>call:xxx` 而非系統格式
 
 **系統已處理**：`parse_tool_call` 支援 4 種格式，包含 Gemma-4 原生格式。
 

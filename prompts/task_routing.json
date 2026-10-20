@@ -1,0 +1,14 @@
+{
+  "complex_terms": ["架構", "架构", "系統", "系统", "cli", "命令行工具", "命令列工具", "多檔", "多文件", "多個檔案", "多个文件", "微服務", "微服务", "完整專案", "完整项目", "全端", "全栈", "多 agent", "多代理", "multi-file", "multiple files", "architecture", "command line tool"],
+  "complex_word_pattern": "\\b(?:system|cli|architecture)\\b",
+  "database_terms": ["sql", "mysql", "postgres", "sqlite", "mongodb", "資料庫", "数据库", "建表", "query"],
+  "backend_terms": ["python", "backend", "algorithm", "後端", "后端", "演算法", "算法", "資料處理", "数据处理", "資料分析", "数据分析", "爬蟲", "爬虫", "排序", "搜尋", "搜索", "動態規劃", "动态规划", "資料結構", "数据结构", "api"],
+  "frontend_terms": ["html", "css", "javascript", "three.js", "canvas", "vue", "react", "js", "3d", "立方體", "球體", "旋轉", "繪圖", "绘图", "畫圖", "画图", "畫一個", "画一个", "畫出", "画出", "繪製", "绘制", "做一個", "做一个", "製作", "制作", "前端", "網頁", "网页", "頁面", "页面", "視覺", "视觉", "插畫", "插画", "場景", "场景", "渲染", "ui", "介面", "界面"],
+  "frontend_word_pattern": "(?<![a-z0-9])(?:html|css|javascript|js|three(?:\\.js)?|canvas|vue|react|ui|cube|sphere|rotat(?:e|ing|ion)|3d|website|web\\s+app|dashboard|interactive|scene|illustration|visual|render|draw)(?![a-z0-9])",
+  "visual_3d_terms": ["3d", "三維", "立體", "立方體", "球體", "球體模型", "旋轉", "旋轉視角", "自由視角", "第一人稱", "漫遊", "環繞", "webgl", "3d 場景", "3d 模型", "3d 空間", "three.js", "threejs", "旋轉的", "旋轉著"],
+  "visual_terms": ["場景", "場景繪製", "場景呈現", "插畫", "畫面", "空間設計", "視覺設計", "互動場景", "靜態場景", "資訊圖表", "資訊視覺化", "視覺化", "圖表", "畫一個", "繪製一個", "畫出一個", "視覺呈現"],
+  "frontend_skill_terms": ["網頁", "前端", "頁面", "網站", "網頁應用", "html", "css", "javascript", "界面", "使用者介面", "表單", "按鈕", "輸入框", "選單", "待辦", "todo", "清單", "聊天", "部落格", "後台", "管理介面", "dashboard", "儀表板", "計算機", "計算器", "互動", "點擊", "滑鼠", "觸控", "website", "web app", "interactive"],
+  "python_skill_terms": ["演算法", "算法", "algorithm", "資料處理", "資料分析", "爬蟲", "api", "後端", "backend", "類別", "函式", "函數", "排序", "搜尋", "查找", "計算", "驗證", "轉換", "解析", "統計", "遞迴", "動態規劃", "資料結構", "樹結構", "圖論", "字串處理", "數值", "矩陣", "檔案讀取", "csv", "json 處理", "狀態機", "回合", "規則", "判斷", "排列", "組合", "機率", "概率"],
+  "python_specific_terms": ["演算法", "算法", "狀態機", "規則引擎"],
+  "skill_word_pattern": "\\b(?:three|cube|sphere|rotat(?:e|ing|ion)|scene|illustration|visual|render|draw)\\b"
+}

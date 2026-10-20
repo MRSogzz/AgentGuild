@@ -13,9 +13,29 @@ export function escapeHtml(s) {
   }[c]));
 }
 
-export function highlightCode(code, lang = 'python') {
+// ★ 依副檔名選 hljs 語言
+export function langFromExt(path) {
+  const ext = (String(path || '').split('.').pop() || '').toLowerCase();
+  const map = {
+    py: 'python',
+    html: 'xml', htm: 'xml', xml: 'xml', svg: 'xml',
+    css: 'css', scss: 'scss', sass: 'scss', less: 'less',
+    js: 'javascript', mjs: 'javascript', cjs: 'javascript',
+    jsx: 'javascript',
+    ts: 'typescript', tsx: 'typescript',
+    json: 'json',
+    md: 'markdown', markdown: 'markdown',
+    yaml: 'yaml', yml: 'yaml',
+    sh: 'bash', bash: 'bash',
+    go: 'go', rs: 'rust', java: 'java',
+    vue: 'xml', svelte: 'xml',
+  };
+  return map[ext] || 'plaintext';
+}
+
+export function highlightCode(code, lang = 'plaintext') {
   try {
-    if (lang && hljs.getLanguage(lang)) {
+    if (lang && lang !== 'plaintext' && hljs.getLanguage(lang)) {
       return hljs.highlight(code, { language: lang }).value;
     }
     return hljs.highlightAuto(code).value;
@@ -24,11 +44,6 @@ export function highlightCode(code, lang = 'python') {
   }
 }
 
-/**
- * 流式渲染：只做 HTML 轉義 + 程式碼塊高亮，不做 KaTeX。
- * 目標：innerHTML 儘量簡單，減少每次 token 更新的 DOM 變化量。
- * 半截公式在流式態不渲染，等最終渲染時統一處理。
- */
 export function renderMarkdownStreaming(text) {
   if (!text) return '';
   const parts = text.split(/```/);
@@ -38,12 +53,12 @@ export function renderMarkdownStreaming(text) {
       const firstLineEnd = part.indexOf('\n');
       const lang = firstLineEnd > 0 ? part.slice(0, firstLineEnd).trim() : '';
       const code = firstLineEnd > 0 ? part.slice(firstLineEnd + 1) : part;
-      const hl = highlightCode(code.replace(/\n$/, ''), lang || 'python');
+      const hl = highlightCode(code.replace(/\n$/, ''), lang || 'plaintext');
       html += `<pre><code class="hljs">${hl}</code></pre>`;
     } else {
       let safe = escapeHtml(part);
       safe = safe.replace(/&lt;verdict&gt;\s*PASS\s*&lt;\/verdict&gt;/gi,
-                          '<span class="verdict-badge pass">✓ 透過</span>');
+                          '<span class="verdict-badge pass">✓ 通过</span>');
       safe = safe.replace(/&lt;verdict&gt;\s*REVISE\s*&lt;\/verdict&gt;/gi,
                           '<span class="verdict-badge revise">↻ 需修改</span>');
       safe = safe.replace(/`([^`\n]+)`/g, '<code>$1</code>');
@@ -53,10 +68,6 @@ export function renderMarkdownStreaming(text) {
   return html;
 }
 
-/**
- * 最終渲染：完整 markdown + 公式保護。
- * 只在 streaming=false 時呼叫，KaTeX 由外部觸發。
- */
 export function renderMarkdown(text) {
   if (!text) return '';
 
@@ -67,7 +78,7 @@ export function renderMarkdown(text) {
       const firstLineEnd = part.indexOf('\n');
       const lang = firstLineEnd > 0 ? part.slice(0, firstLineEnd).trim() : '';
       const code = firstLineEnd > 0 ? part.slice(firstLineEnd + 1) : part;
-      const hl = highlightCode(code.replace(/\n$/, ''), lang || 'python');
+      const hl = highlightCode(code.replace(/\n$/, ''), lang || 'plaintext');
       html += `<pre><code class="hljs">${hl}</code></pre>`;
     } else {
       const mathStore = [];
@@ -93,10 +104,9 @@ export function renderMarkdown(text) {
       safe = escapeHtml(safe);
 
       safe = safe.replace(/&lt;verdict&gt;\s*PASS\s*&lt;\/verdict&gt;/gi,
-                          '<span class="verdict-badge pass">✓ 透過</span>');
+                          '<span class="verdict-badge pass">✓ 通过</span>');
       safe = safe.replace(/&lt;verdict&gt;\s*REVISE\s*&lt;\/verdict&gt;/gi,
                           '<span class="verdict-badge revise">↻ 需修改</span>');
-
       safe = safe.replace(/`([^`\n]+)`/g, '<code>$1</code>');
 
       safe = safe.replace(/\uE000MATH(\d+)\uE000/g, (_, idx) => {
@@ -137,11 +147,6 @@ export function renderMathIn(el, retries = 0) {
   }
 }
 
-/**
- * 只對**完成態**元素做 KaTeX。
- * - 跳過 .streaming
- * - 用 dataset 標記避免重複渲染
- */
 export function renderAllMath(root) {
   if (!root) return;
   root.querySelectorAll('.agent-content:not(.streaming)').forEach(el => {

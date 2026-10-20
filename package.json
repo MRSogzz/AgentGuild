@@ -1,0 +1,27 @@
+{
+  "name": "ai_office",
+  "version": "1.0.0",
+  "description": "**一個完全在本機執行的多 Agent 協作開發工作台，模擬真實軟體團隊從需求到交付的完整流程。**",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MRSogzz/AgentGuild.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/MRSogzz/AgentGuild/issues"
+  },
+  "homepage": "https://github.com/MRSogzz/AgentGuild#readme",
+  "dependencies": {
+    "playwright": "^1.64.1"
+  }
+}

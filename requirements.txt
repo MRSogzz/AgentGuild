@@ -5,6 +5,7 @@
 
 # ---------- Web 框架與伺服器 ----------
 fastapi>=0.110.0
+Pillow>=10.0.0
 uvicorn[standard]>=0.27.0
 
 # ---------- LLM 客戶端（OpenAI 相容，連接 llama.cpp） ----------

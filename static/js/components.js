@@ -1,30 +1,44 @@
 import { h } from 'https://esm.sh/preact@10.19.3';
 import htm from 'https://esm.sh/htm@3.1.1';
-import { renderMarkdown, renderMarkdownStreaming } from './utils.js';
-import { AGENT_META, AGENT_ORDER, EXAMPLES } from './constants.js';
+import {
+  renderMarkdown,
+  renderMarkdownStreaming,
+  langFromExt,
+} from './utils.js';
+import { AGENT_META, AGENT_ORDER, EXAMPLES, PENDING_ID } from './constants.js';
 
 const html = htm.bind(h);
 
-// ============ 左欄 ============
+// ============ 左栏 ============
 export function LeftPanel({ state, onSwitchSession, onNewSession, onDeleteSession }) {
   const { sessions, currentSessionId, steps, verdicts, metrics } = state;
+
+  const isPendingNew = currentSessionId === PENDING_ID;
 
   return html`
     <aside class="panel">
       <div class="panel-header">
-        <span>工作臺</span>
-        <button class="new-btn" onClick=${onNewSession} title="新對話">+</button>
+        <span>工作台</span>
+        <button class="new-btn" onClick=${onNewSession} title="新对话">+</button>
       </div>
 
       <div class="session-list">
-        ${sessions.length === 0
-          ? html`<div class="empty-hint">暫無對話<br/>點選 + 開始</div>`
+        ${isPendingNew && html`
+          <div class="session-item active">
+            <div class="session-info">
+              <div class="session-title">新對話</div>
+              <div class="session-time">尚未儲存</div>
+            </div>
+          </div>
+        `}
+        ${sessions.length === 0 && !isPendingNew
+          ? html`<div class="empty-hint">暂无对话<br/>点击 + 开始</div>`
           : sessions.map(s => html`
               <div key=${s.id}
                    class="session-item ${s.id === currentSessionId ? 'active' : ''}"
                    onClick=${() => onSwitchSession(s.id)}>
                 <div class="session-info">
-                  <div class="session-title">${s.title || '新對話'}</div>
+                  <div class="session-title">${s.title || '新对话'}</div>
                   <div class="session-time">
                     ${new Date(s.updated * 1000).toLocaleString('zh-TW', {
                       month: '2-digit', day: '2-digit',
@@ -34,7 +48,7 @@ export function LeftPanel({ state, onSwitchSession, onNewSession, onDeleteSessio
                 </div>
                 <button class="session-del"
                         onClick=${e => onDeleteSession(s.id, e)}
-                        title="刪除">×</button>
+                        title="删除">×</button>
               </div>
             `)}
       </div>
@@ -46,7 +60,7 @@ export function LeftPanel({ state, onSwitchSession, onNewSession, onDeleteSessio
             <div class="step-icon">${st.avatar}</div>
             <div class="step-name">${st.name}</div>
             <div class="step-status">
-              ${st.status === 'active' ? '● 執行'
+              ${st.status === 'active' ? '● 运行'
                 : st.status === 'done' ? '✓'
                 : `${i + 1}`}
             </div>
@@ -56,11 +70,11 @@ export function LeftPanel({ state, onSwitchSession, onNewSession, onDeleteSessio
 
       ${verdicts.length > 0 && html`
         <div class="rounds">
-          <div class="section-label">判定歷史</div>
+          <div class="section-label">判定历史</div>
           <div class="round-chips">
             ${verdicts.map(v => html`
               <span key=${v.round} class="round-chip ${v.verdict.toLowerCase()}">
-                ${v.round === 0 ? '首輪' : `R${v.round}`}
+                ${v.round === 0 ? '首轮' : `R${v.round}`}
                 ${v.verdict === 'PASS' ? '✓' : '↻'}
               </span>
             `)}
@@ -69,22 +83,22 @@ export function LeftPanel({ state, onSwitchSession, onNewSession, onDeleteSessio
       `}
 
       <div class="metrics">
-        <div class="section-label">實時指標</div>
+        <div class="section-label">实时指标</div>
         <div class="metric-row">
-          <span class="metric-label">輸出速度</span>
+          <span class="metric-label">输出速度</span>
           <span class="metric-value">${metrics.tps || 0} tok/s</span>
         </div>
         <div class="metric-row">
-          <span class="metric-label">累計 tokens</span>
+          <span class="metric-label">累计 tokens</span>
           <span class="metric-value">${metrics.totalTokens || 0}</span>
         </div>
         <div class="metric-row">
-          <span class="metric-label">最近耗時</span>
+          <span class="metric-label">最近耗时</span>
           <span class="metric-value">${metrics.lastDurationMs
             ? (metrics.lastDurationMs / 1000).toFixed(1) + 's' : '—'}</span>
         </div>
         <div class="metric-row">
-          <span class="metric-label">上下文佔用</span>
+          <span class="metric-label">上下文占用</span>
           <span class="metric-value">${metrics.ctxPct || 0}%</span>
         </div>
         <div class="metric-bar">
@@ -96,9 +110,9 @@ export function LeftPanel({ state, onSwitchSession, onNewSession, onDeleteSessio
   `;
 }
 
-// ============ 中欄 ============
+// ============ 中栏 ============
 export function MiddlePanel({ state, feedRef, onSend, onStop }) {
-  const { activities, isBusy, connected, llamaOk } = state;
+  const { activities, isBusy, connected, llamaOk, modelWarning } = state;
 
   return html`
     <main class="middle">
@@ -106,9 +120,9 @@ export function MiddlePanel({ state, feedRef, onSend, onStop }) {
         <div class="middle-title">🏢 Agent Office</div>
         <div class="conn-status ${connected ? '' : 'offline'}">
           <span class="dot"></span>
-          <span>${connected
-            ? (llamaOk === false ? '模型未連線' : '已連線')
-            : '連線斷開'}</span>
+          <span title=${modelWarning || ''}>${connected
+            ? (llamaOk === false ? '模型未连接' : (modelWarning ? '模型格式警告' : '已连接'))
+            : '连接断开'}</span>
         </div>
       </header>
 
@@ -125,8 +139,8 @@ export function MiddlePanel({ state, feedRef, onSend, onStop }) {
         ${activities.length === 0 && html`
           <div class="empty-state">
             <span class="icon">💬</span>
-            輸入任務，或點選上方示例開始<br/>
-            三個 Agent 會依次協作：需求 → 程式碼 → 評審
+            输入任务，或点击上方示例开始<br/>
+            Agent 会依次协作：需求 → 代码 → 测试 → 评审
           </div>
         `}
         ${activities.map(a => renderActivity(a))}
@@ -135,7 +149,7 @@ export function MiddlePanel({ state, feedRef, onSend, onStop }) {
       <footer class="input-area">
         <div class="input-row">
           <textarea id="input-box" rows="1"
-                    placeholder="輸入任務，或點選上方示例"
+                    placeholder="输入任务，或点击上方示例。可用 @qa、@dev 指定 Agent"
                     disabled=${isBusy}
                     onKeyDown=${e => {
                       if (e.key === 'Enter' && !e.shiftKey) {
@@ -149,14 +163,14 @@ export function MiddlePanel({ state, feedRef, onSend, onStop }) {
                     }}></textarea>
           ${isBusy
             ? html`<button class="danger" onClick=${onStop}>⏹ 停止</button>`
-            : html`<button class="primary" onClick=${onSend}>傳送</button>`}
+            : html`<button class="primary" onClick=${onSend}>发送</button>`}
         </div>
       </footer>
     </main>
   `;
 }
 
-// ============ 單個活動 ============
+// ============ 单个活动 ============
 export function renderActivity(a) {
   if (a.type === 'user') {
     return html`<div key=${a.id} class="msg-user">${a.content}</div>`;
@@ -178,15 +192,25 @@ export function renderActivity(a) {
 
   if (a.type === 'final') {
     return html`
-      <div key=${a.id} class="final-card ${a.verdict === 'PASS' ? 'pass' : 'revise'}">
+      <div key=${a.id} class="final-card ${a.verdict === 'PASS' ? 'pass' : a.verdict === 'ERROR' ? 'error' : a.verdict === 'BLOCKED' ? 'blocked' : 'revise'}">
         <h4>
-          ${a.verdict === 'PASS' ? '✅ 交付完成' : '⚠️ 到達最大輪數'}
+          ${a.verdict === 'PASS' ? '✅ 交付完成'
+            : a.verdict === 'DONE' ? '🏁 部分完成'
+            : a.verdict === 'BLOCKED' ? '⏸️ 等待需求釐清'
+            : a.verdict === 'ERROR' ? '⛔ 模型輸出異常，流程已中止'
+            : '⚠️ 未達通過，已停止'}
           ${a.rounds
             ? html`<span style="font-weight:400;color:#6b7280;font-size:11px">
                 （${a.rounds} 輪改進）
               </span>`
             : null}
         </h4>
+        ${a.stop_reason && html`
+          <div style="font-size:12px;color:#92400e;background:#fef3c7;
+                      padding:6px 10px;border-radius:4px;margin-bottom:8px;">
+            ⏹ ${a.stop_reason}
+          </div>
+        `}
         <pre>${a.summary}</pre>
       </div>
     `;
@@ -203,7 +227,7 @@ export function renderActivity(a) {
         `);
       } else if (p.type === 'tool') {
         const isError = p.status === 'done' && p.result &&
-          (p.result.includes('[護欄攔截') || p.result.includes('[工具執行失敗'));
+          (p.result.includes('[护栏拦截') || p.result.includes('[工具执行失败'));
         nodes.push(html`
           <div key=${p.id}
                class="tool-inline ${p.status === 'running' ? 'running' : ''} ${isError ? 'error' : ''}"
@@ -214,7 +238,7 @@ export function renderActivity(a) {
               <span class="tool-duration">${(p.duration_ms / 1000).toFixed(2)}s</span>
             `}
             <span class=${p.status === 'running' ? '' : 'tool-status-ok'}>
-              ${p.status === 'running' ? '執行中' : '✓'}
+              ${p.status === 'running' ? '执行中' : '✓'}
             </span>
           </div>
         `);
@@ -238,6 +262,10 @@ export function renderActivity(a) {
           </div>
           <div class="agent-name">${a.agent.name}</div>
           ${a.phase && html`<div class="agent-phase">${a.phase}</div>`}
+          ${a.interrupted && html`
+            <div class="agent-phase"
+                 style="background:#fee2e2;color:#991b1b;">中斷</div>
+          `}
           ${a.metrics && html`
             <div class="agent-metrics">
               ${a.metrics.tps != null && html`<span>${a.metrics.tps} tok/s</span>`}
@@ -255,7 +283,7 @@ export function renderActivity(a) {
   return null;
 }
 
-// ============ 右欄 ============
+// ============ 右栏 ============
 export function RightPanel({ state, setState }) {
   const { files, selectedFile, selectedTab, tests } = state.artifacts;
   const fileNames = Object.keys(files);
@@ -287,11 +315,11 @@ export function RightPanel({ state, setState }) {
     <aside class="panel">
       <div class="tabs">
         <div class="tab ${selectedTab === 'code' ? 'active' : ''}"
-             onClick=${() => setTab('code')}>📄 程式碼</div>
+             onClick=${() => setTab('code')}>📄 代码</div>
         <div class="tab ${selectedTab === 'diff' ? 'active' : ''}"
              onClick=${() => setTab('diff')}>± Diff</div>
         <div class="tab ${selectedTab === 'tests' ? 'active' : ''}"
-             onClick=${() => setTab('tests')}>🧪 測試 ${tests.length > 0 ? `(${tests.length})` : ''}</div>
+             onClick=${() => setTab('tests')}>🧪 测试 ${tests.length > 0 ? `(${tests.length})` : ''}</div>
       </div>
 
       <div class="artifact-body">
@@ -308,8 +336,8 @@ function renderCodeTab(fileNames, files, selectedFile, selectFile) {
     return html`
       <div class="empty-state">
         <span class="icon">📦</span>
-        尚無程式碼工件<br/>
-        工程師產出程式碼後會自動出現在這裡
+        尚无代码工件<br/>
+        工程师产出代码后会自动出现在这里
       </div>
     `;
   }
@@ -319,7 +347,9 @@ function renderCodeTab(fileNames, files, selectedFile, selectFile) {
   if (!latest) return null;
 
   const displayName = latest.displayName || fileName;
-  const hl = window.__hl_highlight(latest.content, 'python');
+  // ★ 依副檔名自動選高亮語言
+  const lang = langFromExt(displayName);
+  const hl = window.__hl_highlight(latest.content, lang);
 
   return html`
     <div>
@@ -335,16 +365,16 @@ function renderCodeTab(fileNames, files, selectedFile, selectFile) {
         <div class="code-header">
           <span class="path">${displayName}</span>
           <span style="color:#6b7280;font-size:10px">
-            v${latest.version} · R${latest.round_no}
+            ${lang} · v${latest.version} · R${latest.round_no}
           </span>
-          <button onClick=${() => navigator.clipboard.writeText(latest.content)}>複製</button>
+          <button onClick=${() => navigator.clipboard.writeText(latest.content)}>复制</button>
           <button onClick=${() => {
             const blob = new Blob([latest.content], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url; a.download = displayName; a.click();
             URL.revokeObjectURL(url);
-          }}>下載</button>
+          }}>下载</button>
         </div>
         <div class="code-content">
           <pre><code class="hljs" dangerouslySetInnerHTML=${{ __html: hl }} /></pre>
@@ -359,8 +389,8 @@ function renderDiffTab(state, setState, fileNames, files, selectedFile, selectFi
     return html`
       <div class="empty-state">
         <span class="icon">±</span>
-        至少需要兩個版本才能對比<br/>
-        進入改進迴圈後即可看到差異
+        至少需要两个版本才能对比<br/>
+        进入改进循环后即可看到差异
       </div>
     `;
   }
@@ -381,8 +411,8 @@ function renderDiffTab(state, setState, fileNames, files, selectedFile, selectFi
         </div>
         <div class="empty-state">
           <span class="icon">⏳</span>
-          檔案 <b>${displayName}</b> 目前只有 1 個版本<br/>
-          等改進迴圈跑完就能看到 diff
+          文件 <b>${displayName}</b> 目前只有 1 个版本<br/>
+          等改进循环跑完就能看到 diff
         </div>
       </div>
     `;
@@ -445,10 +475,10 @@ function renderDiffTab(state, setState, fileNames, files, selectedFile, selectFi
       <div class="diff-view">
         <div class="diff-legend">
           <span><span class="swatch add"></span> 新增</span>
-          <span><span class="swatch del"></span> 刪除</span>
+          <span><span class="swatch del"></span> 删除</span>
           <span style="margin-left:auto;color:#9ca3af;">
             ${lines.filter(l => l.cls === 'add').length} 增 ·
-            ${lines.filter(l => l.cls === 'del').length} 刪
+            ${lines.filter(l => l.cls === 'del').length} 删
           </span>
         </div>
         ${lines.map((l, i) => html`
@@ -461,81 +491,76 @@ function renderDiffTab(state, setState, fileNames, files, selectedFile, selectFi
   `;
 }
 
-// ---------- 測試結果解析 ----------
+// ---------- 测试结果解析 ----------
 function parseTestResult(output) {
   const text = output || '';
   let passed = 0, failed = 0;
-  let status = 'unknown';   // pass | fail | mixed | unknown
+  let status = 'unknown';
 
-  // 1) pytest 標準彙總行："N passed" / "N failed" / "N error"
-  const pytestPassed = text.match(/(\d+)\s+passed/i);
-  const pytestFailed = text.match(/(\d+)\s+failed/i);
-  const pytestErrors = text.match(/(\d+)\s+error/i);
-  if (pytestPassed) passed += parseInt(pytestPassed[1]);
-  if (pytestFailed) failed += parseInt(pytestFailed[1]);
-  if (pytestErrors) failed += parseInt(pytestErrors[1]);
+  // ========== 優先：逐行統計 PASSED / FAILED ==========
+  const passedLines = text.match(/::\S+\s+PASSED\b/gi);
+  const failedLines = text.match(/::\S+\s+FAILED\b/gi);
+  if (passedLines) passed = passedLines.length;
+  if (failedLines) failed = failedLines.length;
 
-  // 2) unittest 格式："Ran N tests" + "OK" / "FAILED"
+  if (passed > 0 || failed > 0) {
+    if (passed > 0 && failed > 0) status = 'mixed';
+    else if (failed > 0) status = 'fail';
+    else status = 'pass';
+    return { passed, failed, status, showNumbers: true };
+  }
+
+  // ========== 退回：pytest 匯總行 ==========
+  const summaryPassed = text.match(/(?:^|=|\s)(\d+)\s+passed\b/im);
+  const summaryFailed = text.match(/(?:^|=|\s)(\d+)\s+failed\b/im);
+  const summaryErrors = text.match(/(?:^|=|\s)(\d+)\s+error/i);
+  if (summaryPassed) passed = parseInt(summaryPassed[1]);
+  if (summaryFailed) failed = parseInt(summaryFailed[1]);
+  if (summaryErrors) failed += parseInt(summaryErrors[1]);
+
+  if (passed > 0 || failed > 0) {
+    if (passed > 0 && failed > 0) status = 'mixed';
+    else if (failed > 0) status = 'fail';
+    else status = 'pass';
+    return { passed, failed, status, showNumbers: true };
+  }
+
+  // ========== unittest 格式 ==========
   const unittestRan = text.match(/Ran\s+(\d+)\s+tests?/i);
   if (unittestRan) {
     const total = parseInt(unittestRan[1]);
     if (/\bOK\b/.test(text)) {
-      passed = total;
-      failed = 0;
+      return { passed: total, failed: 0, status: 'pass', showNumbers: true };
     } else if (/FAILED/.test(text)) {
       const f = text.match(/failures=(\d+)/i);
       const e = text.match(/errors=(\d+)/i);
       failed = (f ? parseInt(f[1]) : 0) + (e ? parseInt(e[1]) : 0);
       if (failed === 0) failed = total;
       passed = Math.max(0, total - failed);
+      if (passed > 0 && failed > 0) status = 'mixed';
+      else if (failed > 0) status = 'fail';
+      else status = 'pass';
+      return { passed, failed, status, showNumbers: true };
     }
   }
 
-  // 3) 從每個測試行的 PASSED / FAILED 統計
-  //    只匹配 "::test_xxx PASSED" 這種行尾格式，避免匹配 "FAILURES" 標題
-  if (passed === 0 && failed === 0) {
-    const passedLines = text.match(/::\s*\S+\s+PASSED\b/g);
-    const failedLines = text.match(/::\s*\S+\s+FAILED\b/g);
-    if (passedLines) passed = passedLines.length;
-    if (failedLines) failed = failedLines.length;
+  // ========== 兜底 ==========
+  if (/(all\s+tests?\s+passed|all\s+passed|✅\s*all)/i.test(text)) {
+    return { passed: 1, failed: 0, status: 'pass', showNumbers: true };
   }
 
-  // 4) "All tests passed" 兜底
-  if (passed === 0 && failed === 0) {
-    if (/(all\s+tests?\s+passed|all\s+passed|✅\s*all)/i.test(text)) {
-      const perTest = text.match(/test\s*\d+[^\n]*?(?:ok|passed|success|✓)/gi);
-      passed = (perTest && perTest.length > 0) ? perTest.length : 1;
-      status = 'pass';
-    }
-  }
-
-  // 5) 退出碼推斷
   const exitMatch = text.match(/\[退出碼\s+(\d+)\]/);
   if (exitMatch) {
     const code = parseInt(exitMatch[1]);
-    if (code === 0 && failed === 0) {
-      if (passed === 0) passed = 1;
-      status = 'pass';
-    } else if (code !== 0) {
-      status = 'fail';
-      if (failed === 0 && passed === 0) failed = 1;
-    }
+    if (code === 0) return { passed: 1, failed: 0, status: 'pass', showNumbers: true };
+    return { passed: 0, failed: 1, status: 'fail', showNumbers: true };
   }
 
-  // 6) Traceback / AssertionError 直接標失敗
   if (/Traceback|AssertionError/i.test(text)) {
-    status = 'fail';
-    if (failed === 0) failed = 1;
+    return { passed: 0, failed: 1, status: 'fail', showNumbers: true };
   }
 
-  // 7) 綜合狀態
-  if (passed > 0 && failed > 0) status = 'mixed';
-  else if (failed > 0) status = 'fail';
-  else if (passed > 0) status = 'pass';
-
-  const showNumbers = passed > 0 || failed > 0;
-
-  return { passed, failed, status, showNumbers };
+  return { passed: 0, failed: 0, status: 'unknown', showNumbers: false };
 }
 
 
@@ -544,8 +569,8 @@ function renderTestsTab(tests) {
     return html`
       <div class="empty-state">
         <span class="icon">🧪</span>
-        尚未執行測試<br/>
-        QA 呼叫 run_tests 後結果會顯示在這裡
+        尚未运行测试<br/>
+        QA 调用 run_tests 或 run_frontend_check 后结果显示在这里
       </div>
     `;
   }
@@ -558,18 +583,19 @@ function renderTestsTab(tests) {
 
         let badge;
         if (status === 'pass') {
-          badge = html`<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">✅ 透過</span>`;
+          badge = html`<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">✅ 通过</span>`;
         } else if (status === 'fail') {
-          badge = html`<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">❌ 失敗</span>`;
+          badge = html`<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">❌ 失败</span>`;
         } else if (status === 'mixed') {
-          badge = html`<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">⚠️ 部分失敗</span>`;
+          badge = html`<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">⚠️ 部分失败</span>`;
         } else {
-          badge = html`<span style="background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">無法判定</span>`;
+          badge = html`<span style="background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">无法判定</span>`;
         }
 
-        const toolLabel = t.name === 'run_latest_artifact' ? 'QA 執行工件'
-          : t.name === 'run_python' ? 'Python 執行'
+        const toolLabel = t.name === 'run_latest_artifact' ? 'QA 执行工件'
+          : t.name === 'run_python' ? 'Python 执行'
           : t.name === 'run_tests' ? 'pytest'
+          : t.name === 'run_frontend_check' ? '前端检查'
           : t.name;
 
         return html`
@@ -578,11 +604,11 @@ function renderTestsTab(tests) {
               ${showNumbers ? html`
                 <div class="test-stat pass">
                   <span class="num">${passed}</span>
-                  <span class="lbl">透過</span>
+                  <span class="lbl">通过</span>
                 </div>
                 <div class="test-stat fail">
                   <span class="num">${failed}</span>
-                  <span class="lbl">失敗</span>
+                  <span class="lbl">失败</span>
                 </div>
               ` : html`
                 <div style="flex:1;display:flex;align-items:center;">
@@ -599,7 +625,7 @@ function renderTestsTab(tests) {
             </div>
             <div class="code-block">
               <div class="code-header">
-                <span class="path">${toolLabel} 輸出</span>
+                <span class="path">${toolLabel} 输出</span>
               </div>
               <div class="code-content" style="max-height:300px;">
                 <pre style="color:#abb2bf;font-size:11px;line-height:1.5;">${t.output}</pre>

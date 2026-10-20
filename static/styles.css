@@ -313,6 +313,8 @@ body { background: #f5f6f7; }
 }
 .final-card.pass { border-left: 4px solid #10b981; }
 .final-card.revise { border-left: 4px solid #f59e0b; }
+.final-card.blocked { border-left: 4px solid #6366f1; }
+.final-card.error { border-left: 4px solid #ef4444; }
 .final-card h4 {
   font-size: 13px; margin-bottom: 8px;
   display: flex; align-items: center; gap: 6px;

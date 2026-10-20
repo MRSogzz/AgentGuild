@@ -1,26 +1,30 @@
 export const AGENT_META = {
-  pm: { name: '產品經理', avatar: '📋', color: '#8b5cf6' },
-  dev: { name: '工程師', avatar: '💻', color: '#06b6d4' },
-  qa: { name: 'QA 測試', avatar: '🧪', color: '#10b981' },
-  reviewer: { name: '程式碼評審員', avatar: '🔍', color: '#f59e0b' },
+  pm: { name: '产品经理', avatar: '📋', color: '#8b5cf6' },
+  dev: { name: '工程师', avatar: '💻', color: '#06b6d4' },
+  qa: { name: 'QA 测试', avatar: '🧪', color: '#10b981' },
+  reviewer: { name: '代码评审员', avatar: '🔍', color: '#f59e0b' },
 };
 
 export const AGENT_ORDER = ['pm', 'dev', 'qa', 'reviewer'];
 
+// ★ 虛擬「新對話」的固定 ID（僅存在於前端）
+export const PENDING_ID = '__pending_new__';
+
 export const EXAMPLES = [
-  { label: '兩數之和', prompt: '寫一個能計算兩數之和的 Python 函式' },
-  { label: '簡易畫圖', prompt: '用 Pillow 寫一個簡單的畫圖程式' },
-  { label: '迴文判斷', prompt: '寫一個函式判斷字串是否為迴文，包含單元測試' },
-  { label: '棧結構', prompt: '寫一個簡單的棧資料結構，支援 push/pop/peek' },
-  { label: 'CSV 平均值', prompt: '寫一個讀取 CSV 並計算每列平均值的指令碼' },
-  { label: '記住偏好', prompt: '記住：我偏好用 type hints 和 docstring' },
-  { label: '公式演示', prompt: '寫一個函式計算二次方程 ax^2+bx+c=0 的根，並在註釋中說明求根公式 $x=\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}$' },
+  { label: '两数之和', prompt: '写一个能计算两数之和的 Python 函数' },
+  { label: '简易画图', prompt: '用 Pillow 写一个简单的画图程序' },
+  { label: '回文判断', prompt: '写一个函数判断字符串是否为回文，包含单元测试' },
+  { label: '栈结构', prompt: '写一个简单的栈数据结构，支持 push/pop/peek' },
+  { label: 'CSV 平均值', prompt: '写一个读取 CSV 并计算每列平均值的脚本' },
+  { label: '记住偏好', prompt: '记住：我偏好用 type hints 和 docstring' },
+  { label: '公式演示', prompt: '写一个函数计算二次方程 ax^2+bx+c=0 的根，并在注释中说明求根公式 $x=\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}$' },
 ];
 
 export function initialState() {
   return {
     connected: false,
     llamaOk: null,
+    modelWarning: null,
     sessions: [],
     currentSessionId: null,
     steps: AGENT_ORDER.map(id => ({

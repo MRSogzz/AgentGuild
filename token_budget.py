@@ -48,6 +48,34 @@ async def check_llama_health() -> tuple[bool, str]:
         return False, str(e)
 
 
+async def get_llama_runtime_info() -> dict:
+    """Read llama.cpp model/build metadata for diagnosing invalid generations."""
+    base = LLAMA_BASE_URL.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(f"{base}/props")
+            response.raise_for_status()
+            props = response.json()
+        ftype = str(props.get("model_ftype") or "")
+        warning = None
+        if "PTQ1_0" in ftype.upper():
+            warning = (
+                "此模型使用 PTQ1_0 ternary 權重；需使用包含對應 PTQ1_0/Hadamard 支援的 runtime。"
+                "若回答出現重複斜線或亂碼，請核對模型檔 checksum 與 llama.cpp/模型格式相容性。"
+            )
+        return {
+            "model": props.get("model_alias"),
+            "model_ftype": ftype or None,
+            "build_info": props.get("build_info"),
+            "generation_warning": warning,
+        }
+    except Exception as exc:
+        return {"model": None, "model_ftype": None, "build_info": None,
+                "generation_warning": f"無法讀取 llama-server /props：{exc}"}
+
+
 def truncate_to_token_budget(text: str, max_tokens: int) -> str:
     if estimate_tokens(text) <= max_tokens:
         return text

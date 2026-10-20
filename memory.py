@@ -10,6 +10,8 @@ from config import (
     MAX_HISTORY_ROUNDS,
     MEMORY_WEIGHT, MEMORY_HIGH_PRIORITY_THRESHOLD,
     MEMORY_HIGH_PRIORITY_LIMIT, MEMORY_SEARCH_TOP_K,
+    PATHOLOGICAL_REPETITION_WINDOW, PATHOLOGICAL_REPEATED_CHAR_MIN,
+    PATHOLOGICAL_CHAR_RATIO,
 )
 
 
@@ -20,20 +22,30 @@ def _extract_code_blocks(text: str) -> list[str]:
     return CODE_BLOCK_RE.findall(text)
 
 
+def _is_pathological_text(text: str) -> bool:
+    tail = (text or "")[-PATHOLOGICAL_REPETITION_WINDOW:]
+    if re.search(rf"([^\s])\1{{{max(1, PATHOLOGICAL_REPEATED_CHAR_MIN - 1)},}}", tail):
+        return True
+    ratio_window = min(100, PATHOLOGICAL_REPETITION_WINDOW)
+    if len(tail) < ratio_window:
+        return False
+    sample = tail[-ratio_window:]
+    counts = {char: sample.count(char) for char in set(sample)}
+    return max(counts.values(), default=0) / len(sample) > PATHOLOGICAL_CHAR_RATIO and " " not in counts
+
+
 def compress_agent_output(text: str, head: int = 400, tail: int = 300) -> str:
     if len(text) <= head + tail + 200:
         return text
 
-    code_blocks = _extract_code_blocks(text)
     head_text = text[:head].rstrip()
     tail_text = text[-tail:].lstrip() if len(text) > tail else ""
 
     parts = [head_text, "...[中間說明已省略]..."]
     if tail_text and tail_text not in head_text:
         parts.append(tail_text)
-    if code_blocks:
-        parts.append("\n[完整程式碼區塊]")
-        parts.extend(code_blocks)
+    if _extract_code_blocks(text):
+        parts.append("[程式碼區塊已省略；請從工作區工件讀取]")
     return "\n\n".join(parts)
 
 
@@ -48,6 +60,7 @@ class Session:
             "updated": time.time(),
         }
         self.history: list[dict] = []
+        self.frozen_tests: dict[str, str] = {}
         self._load()
 
     def _load(self):
@@ -56,14 +69,18 @@ class Session:
                 data = json.loads(self.path.read_text(encoding="utf-8"))
                 self.meta = data.get("meta", self.meta)
                 self.history = data.get("history", [])
+                self.frozen_tests = data.get("frozen_tests", {}) or {}
             except Exception:
                 pass
 
     def save(self):
         self.meta["updated"] = time.time()
         self.path.write_text(
-            json.dumps({"meta": self.meta, "history": self.history},
-                       ensure_ascii=False, indent=2),
+            json.dumps({
+                "meta": self.meta,
+                "history": self.history,
+                "frozen_tests": self.frozen_tests,
+            }, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 
@@ -71,20 +88,28 @@ class Session:
                   responses: dict[str, str],
                   artifacts: dict | None = None,
                   messages: list[dict] | None = None,
-                  tests: list[dict] | None = None):
-        """
-        artifacts 結構：
-          {logical_name: [ {path, filename, logical_name, content, version, round_no, ...}, ... ]}
-        tests 結構：
-          [ {agent_id, name, output, ts}, ... ]
-        """
+                  tests: list[dict] | None = None,
+                  interrupted: bool = False,
+                  shared_state: dict | None = None):
+        safe_responses = {
+            key: "[退化輸出已從歷史中剔除]" if _is_pathological_text(value) else value
+            for key, value in responses.items()
+        }
+        safe_messages = []
+        for message in messages or []:
+            item = dict(message)
+            if _is_pathological_text(str(item.get("content", ""))):
+                item["content"] = "[退化輸出已從歷史中剔除]"
+            safe_messages.append(item)
         self.history.append({
             "round": len(self.history) + 1,
             "user": user_msg,
-            "responses": responses,
-            "messages": messages or [],
+            "responses": safe_responses,
+            "messages": safe_messages,
             "artifacts": artifacts or {},
             "tests": tests or [],
+            "shared_state": shared_state or {},
+            "interrupted": interrupted,
             "time": time.time(),
         })
         if self.meta["title"] == "新對話" and user_msg:
@@ -107,14 +132,12 @@ class Session:
                 label = name + (f"({m['phase']})" if m.get("phase") else "")
 
                 arts = (h.get("artifacts") or {}).get(m["agent_id"], [])
-                # arts 可能是舊格式（字串列表）或新格式（物件列表）
                 file_names = []
                 for a in arts:
                     if isinstance(a, str):
                         file_names.append(a)
                     elif isinstance(a, dict):
                         file_names.append(a.get("filename") or a.get("path") or "?")
-                # 也相容按 logical_name 分組的新結構
                 if not file_names and m["agent_id"] == "dev":
                     for logical_name, versions in (h.get("artifacts") or {}).items():
                         if isinstance(versions, list):
@@ -126,13 +149,25 @@ class Session:
                     summary = compress_agent_output(m["content"], head=300, tail=200)
                     parts.append(
                         f"[{label}]:\n{summary}\n"
-                        f"[程式碼已存為檔案: {', '.join(file_names)}]"
+                        f"[程式碼已存為文件: {', '.join(file_names)}]"
                     )
                 else:
                     parts.append(f"[{label}]:\n{compress_agent_output(m['content'])}")
             parts.append("---")
 
         parts.append(f"使用者: {current_user_msg}")
+        return "\n\n".join(parts)
+
+    def build_pm_transcript(self, current_user_msg: str) -> str:
+        """Give PM recent user requests and requirement summaries, never source dumps."""
+        parts = []
+        for item in self.history[-3:]:
+            if item.get("user"):
+                parts.append(f"先前需求：{item['user'][:1200]}")
+            requirement = (item.get("shared_state") or {}).get("requirement")
+            if requirement:
+                parts.append("先前驗收標準：" + json.dumps(requirement, ensure_ascii=False)[:2400])
+        parts.append(f"目前需求：{current_user_msg}")
         return "\n\n".join(parts)
 
     def _fallback_messages(self, h: dict) -> list[dict]:
@@ -142,14 +177,21 @@ class Session:
         return msgs
 
     def to_dict(self):
-        return {"meta": self.meta, "history": self.history}
+        return {
+            "meta": self.meta,
+            "history": self.history,
+            "frozen_tests": self.frozen_tests,
+        }
 
 
 def list_sessions():
+    """列出所有會話。跳過沒有對話歷史的空會話。"""
     sessions = []
     for p in SESSIONS_DIR.glob("*.json"):
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
+            if not data.get("history"):
+                continue
             sessions.append(data.get("meta", {"id": p.stem, "title": "未命名", "updated": 0}))
         except Exception:
             pass

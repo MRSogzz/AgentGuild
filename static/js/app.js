@@ -4,18 +4,25 @@ import htm from 'https://esm.sh/htm@3.1.1';
 import { diffLines } from 'https://esm.sh/diff@5.1.0';
 import hljs from 'https://esm.sh/highlight.js@11.9.0/lib/common';
 
-import { AGENT_META, AGENT_ORDER, initialState } from './constants.js';
-import { renderAllMath, highlightCode } from './utils.js';
+import { AGENT_META, AGENT_ORDER, initialState, PENDING_ID } from './constants.js';
+import { renderAllMath, highlightCode, langFromExt } from './utils.js';
 import { LeftPanel, MiddlePanel, RightPanel } from './components.js';
 
 window.__hl_highlight = highlightCode;
 window.__diff_lines = diffLines;
+window.__lang_from_ext = langFromExt;
 
 const html = htm.bind(h);
 
 const vid = (v) => `${v.round_no}_${v.version}`;
 
-const TEST_TOOLS = new Set(['run_tests', 'run_latest_artifact', 'run_python']);
+// ★ 加入 run_frontend_check
+const TEST_TOOLS = new Set([
+  'run_tests',
+  'run_frontend_check',
+  'run_latest_artifact',
+  'run_python',
+]);
 
 
 // ============ 從 history 重建 activities ============
@@ -42,6 +49,7 @@ function rebuildActivities(history) {
             parts: [{ type: 'text', content: m.content }],
             currentText: '',
             streaming: false,
+            interrupted: h.interrupted || false,
           });
         }
       }
@@ -57,6 +65,7 @@ function rebuildActivities(history) {
             parts: [{ type: 'text', content: h.responses[aid] }],
             currentText: '',
             streaming: false,
+            interrupted: h.interrupted || false,
           });
         }
       }
@@ -74,12 +83,10 @@ function rebuildArtifacts(history) {
   for (const h of history) {
     const arts = h.artifacts || {};
 
-    // 收集本輪所有版本的 artifacts
     for (const [logicalName, versions] of Object.entries(arts)) {
       if (!Array.isArray(versions)) continue;
       if (!files[logicalName]) files[logicalName] = [];
       for (const v of versions) {
-        // 相容舊格式（字串或只有 filename 的物件）
         let item;
         if (typeof v === 'string') {
           item = {
@@ -101,7 +108,6 @@ function rebuildArtifacts(history) {
           continue;
         }
 
-        // 去重：同一 (round_no, version) 只保留一個
         const exists = files[logicalName].some(x =>
           x.version === item.version && x.round_no === item.round_no);
         if (!exists) {
@@ -112,7 +118,6 @@ function rebuildArtifacts(history) {
         (a.round_no * 100 + a.version) - (b.round_no * 100 + b.version));
     }
 
-    // 收集測試
     const roundTests = h.tests || [];
     for (const t of roundTests) {
       tests.push(t);
@@ -122,7 +127,6 @@ function rebuildArtifacts(history) {
   const fileNames = Object.keys(files);
   const selectedFile = fileNames[0] || null;
 
-  // 初始化 diffFrom / diffTo
   let diffFrom = null, diffTo = null;
   if (selectedFile && files[selectedFile]) {
     const vs = files[selectedFile];
@@ -156,7 +160,17 @@ function App() {
   const lastFrame = useRef(0);
   const pendingTokens = useRef('');
 
-  // ---------- KaTeX 渲染觸發 ----------
+  const currentSessionIdRef = useRef(null);
+  const isBusyRef = useRef(false);
+
+  useEffect(() => {
+    currentSessionIdRef.current = state.currentSessionId;
+  }, [state.currentSessionId]);
+
+  useEffect(() => {
+    isBusyRef.current = state.isBusy;
+  }, [state.isBusy]);
+
   const streamingKey = state.activities
     .map(a => a.type === 'agent' ? (a.streaming ? '1' : '0') : '_')
     .join('');
@@ -186,32 +200,51 @@ function App() {
     return () => clearTimeout(t);
   }, [state.currentSessionId]);
 
-  // ---------- WebSocket ----------
   useEffect(() => {
     function connect() {
       const ws = new WebSocket(`ws://${location.host}/ws`);
       wsRef.current = ws;
+
       ws.onopen = () => {
         reconnectDelay.current = 1500;
         setState(s => ({ ...s, connected: true }));
-        ws.send(JSON.stringify({ type: 'bind', session_id: state.currentSessionId }));
+
+        const sid = currentSessionIdRef.current;
+        const busy = isBusyRef.current;
+
+        if (sid && sid !== PENDING_ID) {
+          ws.send(JSON.stringify({ type: 'bind', session_id: sid }));
+        } else if (!busy) {
+          ws.send(JSON.stringify({ type: 'bind', session_id: null }));
+        }
       };
+
       ws.onmessage = e => handleMessage(JSON.parse(e.data));
+
       ws.onclose = () => {
         setState(s => ({ ...s, connected: false }));
-        setTimeout(connect, reconnectDelay.current);
+        const delay = isBusyRef.current
+          ? Math.max(reconnectDelay.current, 3000)
+          : reconnectDelay.current;
+        setTimeout(connect, delay);
         reconnectDelay.current = Math.min(reconnectDelay.current * 1.5, 10000);
       };
+
       ws.onerror = () => setState(s => ({ ...s, connected: false }));
     }
+
     connect();
     return () => wsRef.current?.close();
   }, []);
 
   useEffect(() => {
     fetch('/api/health').then(r => r.json())
-      .then(d => setState(s => ({ ...s, llamaOk: d.llama_server })))
-      .catch(() => setState(s => ({ ...s, llamaOk: false })));
+      .then(d => setState(s => ({
+        ...s,
+        llamaOk: d.llama_server,
+        modelWarning: d.generation_warning || null,
+      })))
+      .catch(() => setState(s => ({ ...s, llamaOk: false, modelWarning: null })));
   }, []);
 
   useEffect(() => {
@@ -220,16 +253,34 @@ function App() {
     }
   });
 
-  // ---------- 訊息處理 ----------
   const handleMessage = useCallback((msg) => {
     switch (msg.type) {
       case 'bound':
-        setState(s => ({
-          ...s,
-          currentSessionId: msg.session.id,
-          activities: rebuildActivities(msg.history),
-          artifacts: rebuildArtifacts(msg.history),
-        }));
+        if (msg.session && msg.session.id) {
+          setState(s => {
+            const hasLocal = s.activities.length > 0;
+            const emptyHistory = !msg.history || msg.history.length === 0;
+            const realId = msg.session.id;
+            const otherSessions = s.sessions.filter(x => x.id !== realId);
+            const sessions = [msg.session, ...otherSessions];
+
+            const base = {
+              ...s,
+              currentSessionId: realId,
+              sessions,
+            };
+
+            if (hasLocal && emptyHistory) {
+              return base;
+            }
+
+            return {
+              ...base,
+              activities: rebuildActivities(msg.history),
+              artifacts: rebuildArtifacts(msg.history),
+            };
+          });
+        }
         loadSessions();
         break;
 
@@ -245,6 +296,7 @@ function App() {
           currentText: '',
           streaming: true,
           metrics: null,
+          interrupted: false,
         };
         currentActivityId.current = act.id;
         setState(s => ({
@@ -259,6 +311,17 @@ function App() {
 
       case 'token':
         handleToken(msg.agent_id, msg.token);
+        break;
+
+      case 'agent_reset':
+        setState(s => ({
+          ...s,
+          activities: s.activities.map(a => a.id !== currentActivityId.current ? a : ({
+            ...a,
+            currentText: '',
+            parts: a.parts.filter(part => part.type === 'tool'),
+          })),
+        }));
         break;
 
       case 'tool': {
@@ -300,6 +363,7 @@ function App() {
             }),
           }));
 
+          // ★ TEST_TOOLS 已含 run_frontend_check
           if (TEST_TOOLS.has(msg.name) && msg.result && msg.result.trim()) {
             setState(s => ({
               ...s,
@@ -438,6 +502,7 @@ function App() {
             type: 'final',
             verdict: msg.verdict,
             rounds: msg.rounds,
+            stop_reason: msg.stop_reason || null,
             summary: msg.summary,
           }],
         }));
@@ -500,7 +565,19 @@ function App() {
     try {
       const r = await fetch('/api/sessions');
       const list = await r.json();
-      setState(s => ({ ...s, sessions: list }));
+      setState(s => {
+        const currentId = s.currentSessionId;
+        if (currentId && currentId !== PENDING_ID) {
+          const inList = list.find(x => x.id === currentId);
+          if (!inList) {
+            const existing = s.sessions.find(x => x.id === currentId);
+            if (existing) {
+              return { ...s, sessions: [existing, ...list] };
+            }
+          }
+        }
+        return { ...s, sessions: list };
+      });
     } catch(e) {}
   }, []);
 
@@ -533,6 +610,7 @@ function App() {
 
   const switchSession = async (sid) => {
     if (state.isBusy) return;
+    if (sid === PENDING_ID) return;
     try {
       const r = await fetch(`/api/sessions/${sid}`);
       const data = await r.json();
@@ -551,7 +629,7 @@ function App() {
   const newSession = () => {
     setState(s => ({
       ...s,
-      currentSessionId: null,
+      currentSessionId: PENDING_ID,
       activities: [],
       verdicts: [],
       round: 0,
@@ -570,7 +648,7 @@ function App() {
 
   const deleteSession = async (sid, e) => {
     e.stopPropagation();
-    if (!confirm('刪除此對話？')) return;
+    if (!confirm('删除此对话？')) return;
     await fetch(`/api/sessions/${sid}`, { method: 'DELETE' });
     if (sid === state.currentSessionId) {
       setState(s => ({
